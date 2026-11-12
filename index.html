@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>ฟาร์มสุขบ้านนา</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#173b2a;color:#fff;font-family:system-ui,'Tahoma',sans-serif;overflow:hidden}
+#game{display:block;width:100vw;height:100dvh;image-rendering:pixelated;background:#8bcf70}
+.hud{position:absolute;top:8px;left:8px;right:8px;display:flex;justify-content:space-between;gap:8px;pointer-events:none;flex-wrap:wrap}
+.panel{background:#593b20eF;border:3px solid #d6a65a;border-radius:10px;padding:7px 10px;font-size:14px;text-shadow:1px 1px #222;box-shadow:0 3px #2a1b10}
+#msg{position:absolute;top:27%;left:50%;transform:translateX(-50%);background:#fff4d6;color:#442b18;border:3px solid #a66c35;border-radius:12px;padding:9px 14px;font-weight:bold;display:none;max-width:85%;text-align:center}
+.controls{position:absolute;bottom:14px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+.pad{display:grid;grid-template-columns:48px 48px 48px;grid-template-rows:48px 48px 48px;gap:4px;pointer-events:auto}
+.btn{border:2px solid #e7c27c;background:#754b2cdd;color:#fff;border-radius:12px;font-size:20px;font-weight:bold;touch-action:none;user-select:none;box-shadow:0 3px #392314}
+.pad .up{grid-column:2}.pad .left{grid-column:1;grid-row:2}.pad .down{grid-column:2;grid-row:2}.pad .right{grid-column:3;grid-row:2}
+.actions{display:flex;gap:7px;pointer-events:auto;flex-wrap:wrap;justify-content:flex-end;max-width:55%}.actions button{width:58px;height:58px;font-size:12px}
+@media(min-width:700px){.controls{max-width:900px;margin:auto}.panel{font-size:16px}}
+</style></head><body>
+<canvas id="game"></canvas>
+<div class="hud"><div class="panel">🌾 ฟาร์มสุขบ้านนา<br><span id="stats">เงิน 100 ฿ | วันที่ 1 | พลังงาน 100</span></div><div class="panel">🌤️ <span id="clock">08:00</span><br>ฤดูร้อน</div></div>
+<div id="msg"></div>
+<div class="controls"><div class="pad"><button class="btn up" data-move="up">▲</button><button class="btn left" data-move="left">◀</button><button class="btn down" data-move="down">▼</button><button class="btn right" data-move="right">▶</button></div>
+<div class="actions"><button class="btn" id="tool">🪓<br>จอบ</button><button class="btn" id="seed">🌱<br>เมล็ด</button><button class="btn" id="water">💧<br>รดน้ำ</button><button class="btn" id="sell">🧺<br>ขาย</button><button class="btn" id="tractor">🚜<br>รถไถ</button></div></div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');let W=960,H=600,scale=1;
+function resize(){c.width=innerWidth*devicePixelRatio;c.height=innerHeight*devicePixelRatio;W=c.width;H=c.height;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);W=innerWidth;H=innerHeight}addEventListener('resize',resize);resize();
+let px=480,py=330,money=100,day=1,energy=100,minutes=480,mode='hoe',seeds=8,crops=[],keys={},msgTimer,tractor=false,tractorFuel=20;
+const tile=40, farm={x:W/2-150,y:H/2-30,w:300,h:200};
+function say(t){let el=document.getElementById('msg');el.textContent=t;el.style.display='block';clearTimeout(msgTimer);msgTimer=setTimeout(()=>el.style.display='none',2300)}
+function draw(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#7fca69';ctx.fillRect(0,0,W,H);
+ // grass texture
+ for(let y=0;y<H;y+=35)for(let x=(y%70);x<W;x+=55){ctx.fillStyle='#6fba5e';ctx.fillRect(x,y,3,3)}
+ // rice paddy
+ ctx.fillStyle='#c6a16a';ctx.fillRect(20,H-190,150,160);for(let y=H-180;y<H-35;y+=12){ctx.fillStyle='#e5c47d';ctx.fillRect(25,y,140,2);ctx.fillStyle='#d5b36d';for(let x=35;x<160;x+=14)ctx.fillRect(x,y+3,3,7)}
+ // pond
+ ctx.fillStyle='#398ec0';ctx.beginPath();ctx.ellipse(110,110,85,55,0,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#8de2e9';ctx.stroke();
+ // house
+ ctx.fillStyle='#8a552e';ctx.fillRect(W/2-95,H/2-170,190,115);ctx.fillStyle='#633b24';ctx.beginPath();ctx.moveTo(W/2-115,H/2-170);ctx.lineTo(W/2,H/2-235);ctx.lineTo(W/2+115,H/2-170);ctx.fill();ctx.fillStyle='#e9b65c';ctx.fillRect(W/2-20,H/2-115,40,60);ctx.fillStyle='#4b2d1c';ctx.fillRect(W/2-70,H/2-140,35,30);ctx.fillRect(W/2+35,H/2-140,35,30);
+ // crop field
+ ctx.fillStyle='#9b6b3c';ctx.fillRect(farm.x,farm.y,farm.w,farm.h);
+ for(let y=farm.y+8;y<farm.y+farm.h;y+=35){ctx.fillStyle='#b8874c';ctx.fillRect(farm.x+5,y,farm.w-10,2)}
+ crops.forEach(p=>{ctx.fillStyle=p.water?'#6b4b2b':'#87613a';ctx.fillRect(p.x-13,p.y-13,26,26);if(p.stage>0){ctx.fillStyle=p.stage>=3?'#e6c33b':'#3d9c42';ctx.beginPath();ctx.arc(p.x,p.y,5+p.stage*2,0,Math.PI*2);ctx.fill();ctx.fillRect(p.x-2,p.y-10,4,12)}if(p.stage>=3){ctx.fillStyle='#f4d34c';ctx.fillRect(p.x-5,p.y-3,10,7)}});
+ // trees
+ for(let i=0;i<8;i++){let x=30+i*115,y=40+(i%3)*22;ctx.fillStyle='#704321';ctx.fillRect(x,y+15,9,25);ctx.fillStyle=['#287b38','#319443','#206b32'][i%3];ctx.beginPath();ctx.arc(x+4,y+10,22,0,Math.PI*2);ctx.fill()}
+ // path
+ ctx.fillStyle='#d8b477';ctx.fillRect(0,H/2+70,W,28);ctx.fillRect(W/2+110,0,25,H);
+ // market
+ ctx.fillStyle='#a66b39';ctx.fillRect(W-150,H-170,110,75);ctx.fillStyle='#f2d5a2';ctx.fillRect(W-150,H-170,110,15);ctx.fillStyle='#c74435';for(let x=W-150;x<W-40;x+=22)ctx.fillRect(x,H-170,10,15);
+ ctx.fillStyle='#fff';ctx.font='16px sans-serif';ctx.fillText('ตลาดบ้านนา',W-145,H-180);
+ // player
+ ctx.fillStyle='#244b9a';ctx.fillRect(px-9,py-4,18,22);ctx.fillStyle='#f2bb83';ctx.fillRect(px-7,py-17,14,14);ctx.fillStyle='#3a2519';ctx.fillRect(px-8,py-20,16,6);ctx.fillStyle='#fff';ctx.fillRect(px-4,py-10,3,3);ctx.fillRect(px+2,py-10,3,3);
+ ctx.fillStyle='#fff';ctx.font='13px sans-serif';ctx.fillText('ชาวนา',px-20,py+28);
+ // instructions
+ ctx.fillStyle='#fff';ctx.font='14px sans-serif';ctx.fillText('เดินไปแปลงดิน แล้วกด จอบ / เมล็ด / รดน้ำ',12,H-12);
+ document.getElementById('stats').textContent=`เงิน ${money} ฿ | วันที่ ${day} | พลังงาน ${energy} | เมล็ด ${seeds}`;
+ document.getElementById('clock').textContent=String(Math.floor(minutes/60)%24).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
+}
+function nearFarm(){return px>farm.x-20&&px<farm.x+farm.w+20&&py>farm.y-20&&py<farm.y+farm.h+20}
+function action(){if(tractor){if(!nearFarm()){say('ขับรถไถเข้าแปลงนา');return}let x=Math.round((px-farm.x)/35)*35+farm.x,y=Math.round((py-farm.y)/35)*35+farm.y;let p=crops.find(a=>Math.abs(a.x-x)<18&&Math.abs(a.y-y)<18);if(p){say('ไถทับแปลงปลูกไม่ได้ เก็บผักก่อน');return}crops.push({x,y,stage:0,water:false});tractorFuel=Math.max(0,tractorFuel-1);say('🚜 ไถพรวนดินแล้ว! น้ำมันรถ '+tractorFuel);return}if(!nearFarm()){say('เดินเข้าใกล้แปลงดินก่อนนะ');return}let x=Math.round((px-farm.x)/35)*35+farm.x,y=Math.round((py-farm.y)/35)*35+farm.y;let p=crops.find(a=>Math.abs(a.x-x)<18&&Math.abs(a.y-y)<18);
+ if(mode==='hoe'){if(p){if(p.stage>=3){money+=25;crops=crops.filter(a=>a!==p);say('เก็บผักได้ 25 บาท!')}else say('ผักยังโตไม่เต็มที่');}else{crops.push({x,y,stage:0,water:false});energy=Math.max(0,energy-2);say('พรวนดินแล้ว! เลือกเมล็ดเพื่อปลูก')}} 
+ if(mode==='seed'){if(p){say('แปลงนี้มีเมล็ดแล้ว');return}if(seeds>0){crops.push({x,y,stage:1,water:false});seeds--;energy=Math.max(0,energy-2);say('ปลูกผักแล้ว! รดน้ำทุกวัน')}else say('เมล็ดหมด ไปซื้อที่ตลาด')}
+ if(mode==='water'){if(p){p.water=true;p.stage=Math.min(3,p.stage+1);energy=Math.max(0,energy-1);say('รดน้ำเรียบร้อย 💧')}else say('ต้องปลูกก่อนถึงจะรดน้ำได้')}
+}
+document.getElementById('tool').onclick=()=>{mode='hoe';say('เลือกจอบ')};document.getElementById('seed').onclick=()=>{mode='seed';say('เลือกเมล็ดพันธุ์')};document.getElementById('water').onclick=()=>{mode='water';say('เลือกบัวรดน้ำ')};
+document.getElementById('sell').onclick=()=>{money+=crops.filter(p=>p.stage>=3).length*25;crops=crops.filter(p=>p.stage<3);say('ขายผลผลิตแล้ว! รับเงินเข้ากระเป๋า')};
+document.getElementById('tractor').onclick=()=>{tractor=!tractor;if(tractor){mode='hoe';say('🚜 ขึ้นขับรถไถเดินตาม! กดปุ่มเดินเพื่อไถนา')}else say('ลงจากรถไถแล้ว')};
+function move(d){let v=12;if(d==='up')py-=tractor?16:v;if(d==='down')py+=tractor?16:v;if(d==='left')px-=tractor?16:v;if(d==='right')px+=tractor?16:v;px=Math.max(10,Math.min(W-10,px));py=Math.max(20,Math.min(H-20,py));minutes+=2;if(tractor&&nearFarm()&&tractorFuel>0){let tx=Math.round((px-farm.x)/35)*35+farm.x,ty=Math.round((py-farm.y)/35)*35+farm.y;if(!crops.some(p=>Math.abs(p.x-tx)<18&&Math.abs(p.y-ty)<18)){crops.push({x:tx,y:ty,stage:0,water:false});tractorFuel--;}}if(minutes>=1200){minutes=360;day++;energy=100;crops.forEach(p=>{if(p.water)p.stage=Math.min(3,p.stage+1);p.water=false});say('วันใหม่แล้ว! ผักที่รดน้ำเติบโตขึ้น')}}
+document.querySelectorAll('[data-move]').forEach(b=>{let d=b.dataset.move;b.addEventListener('pointerdown',e=>{e.preventDefault();move(d);b.setPointerCapture(e.pointerId)});b.addEventListener('pointerup',()=>{});});
+addEventListener('keydown',e=>{if(e.repeat)return;let k=e.key.toLowerCase();if(k==='w'||k==='arrowup')move('up');if(k==='s'||k==='arrowdown')move('down');if(k==='a'||k==='arrowleft')move('left');if(k==='d'||k==='arrowright')move('right');if(k===' ')action()});
+c.addEventListener('click',e=>{let r=c.getBoundingClientRect();px=e.clientX-r.left;py=e.clientY-r.top;action()});
+function loop(){draw();requestAnimationFrame(loop)}loop();
+</script></body></html>
